@@ -70,6 +70,10 @@ static bool TestEnum()
 			"{ \n"
 			"    Value16 = 0x1234 \n"
 			"} \n"
+			"enum Wide64 : int64 { High64 = 1099511627776, Low64 = -1099511627776 } \n"
+			"int64 test_enum_int64_high() { return High64; } \n"
+			"int64 test_enum_int64_low() { return Low64; } \n"
+			"bool test_enum_int64_compare() { Wide64 value = High64; return value == High64 && value != Low64; } \n"
 			"int test_enum_int8() \n"
 			"{ \n"
 			"    return Value8; \n"
@@ -82,7 +86,10 @@ static bool TestEnum()
 		if (r < 0)
 			TEST_FAILED;
 		r = ExecuteString(engine, "assert( test_enum_int8() == 42 ); \n"
-						          "assert( test_enum_int16() == 0x1234 ); \n", mod);
+						          "assert( test_enum_int16() == 0x1234 ); \n"
+						          "assert( test_enum_int64_high() == 1099511627776 ); \n"
+						          "assert( test_enum_int64_low() == -1099511627776 ); \n"
+						          "assert( test_enum_int64_compare() ); \n", mod);
 		if (r != asEXECUTION_FINISHED)
 			TEST_FAILED;
 		engine->ShutDownAndRelease();

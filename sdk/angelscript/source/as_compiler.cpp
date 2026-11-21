@@ -9519,6 +9519,10 @@ void asCCompiler::ImplicitConversionConstant(asCExprContext *from, const asCData
 				from->type.SetConstantQW(asCDataType::CreatePrimitive(ttInt64, true), (asINT16)from->type.GetConstantW());
 			else if( from->type.dataType.GetSizeInMemoryBytes() == 4 )
 				from->type.SetConstantQW(asCDataType::CreatePrimitive(ttInt64, true), (int)from->type.GetConstantDW());
+			else if( from->type.dataType.GetSizeInMemoryBytes() == 8 )
+			{
+				from->type.dataType = asCDataType::CreatePrimitive(ttInt64, true);
+			}
 		}
 	}
 	else if (to.IsUnsignedType() && to.GetSizeInMemoryDWords() == 1 && !to.IsEnumType())
