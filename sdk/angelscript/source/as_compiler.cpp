@@ -2299,7 +2299,10 @@ int asCCompiler::PrepareArgument(asCDataType *paramType, asCExprContext *ctx, as
 				ctx->bc.Instr(asBC_PopPtr);
 				ctx->bc.InstrSHORT(asBC_VAR, (short)ctx->type.stackOffset);
 
-				ProcessDeferredParams(ctx);
+				// A converted argument may borrow storage from an earlier temporary.
+				// Keep it alive for a function call, but finish cleanup here when
+				// preparing a return value or assignment (there is no consuming call).
+				ProcessDeferredParams(ctx, isFunction && engine->ep.allowUnsafeReferences);
 			}
 		}
 	}

@@ -5,6 +5,39 @@ namespace TestConversion
 
 static const char * const TESTNAME = "TestConversion";
 
+static int liveConversionOwners = 0;
+
+static void ConstructConversionOwner(asIScriptGeneric *gen)
+{
+	new(gen->GetObject()) int(0);
+	++liveConversionOwners;
+}
+
+static void CopyConversionOwner(asIScriptGeneric *gen)
+{
+	new(gen->GetObject()) int(*static_cast<const int*>(gen->GetArgObject(0)));
+	++liveConversionOwners;
+}
+
+static void DestructConversionOwner(asIScriptGeneric *)
+{
+	--liveConversionOwners;
+}
+
+static void ConvertBorrowedArgument(asIScriptGeneric *gen)
+{
+	new(gen->GetAddressOfReturnLocation()) int(0);
+}
+
+static void ConsumeBorrowedArgument(asIScriptGeneric *gen)
+{
+	gen->SetReturnByte(liveConversionOwners > 0);
+}
+
+static void ReadConversionOwners(asIScriptGeneric *gen)
+{
+	gen->SetReturnDWord(liveConversionOwners);
+}
 
 void TestI8(asIScriptGeneric*) {}
 void TestI16(asIScriptGeneric*) {}
@@ -253,6 +286,42 @@ static const char *script =
 bool Test()
 {
 	bool fail = false;
+
+	// A view converted from a temporary must not outlive its owner during argument preparation.
+	{
+		asIScriptEngine *engine = asCreateScriptEngine(ANGELSCRIPT_VERSION);
+		engine->SetEngineProperty(asEP_ALLOW_UNSAFE_REFERENCES, true);
+		engine->RegisterGlobalFunction("void assert(bool)", asFUNCTION(Assert), asCALL_GENERIC);
+		int r = engine->RegisterObjectType("ConversionOwner", sizeof(int), asOBJ_VALUE | asOBJ_APP_CLASS_CDK);
+		if( r < 0 ) TEST_FAILED;
+		r = engine->RegisterObjectBehaviour("ConversionOwner", asBEHAVE_CONSTRUCT, "void f()", asFUNCTION(ConstructConversionOwner), asCALL_GENERIC);
+		if( r < 0 ) TEST_FAILED;
+		r = engine->RegisterObjectBehaviour("ConversionOwner", asBEHAVE_CONSTRUCT, "void f(const ConversionOwner &in)", asFUNCTION(CopyConversionOwner), asCALL_GENERIC);
+		if( r < 0 ) TEST_FAILED;
+		r = engine->RegisterObjectBehaviour("ConversionOwner", asBEHAVE_DESTRUCT, "void f()", asFUNCTION(DestructConversionOwner), asCALL_GENERIC);
+		if( r < 0 ) TEST_FAILED;
+		r = engine->RegisterObjectType("BorrowedArgument", sizeof(int), asOBJ_VALUE | asOBJ_POD | asOBJ_APP_CLASS_ALLINTS | asOBJ_APP_CLASS);
+		if( r < 0 ) TEST_FAILED;
+		r = engine->RegisterObjectMethod("ConversionOwner", "BorrowedArgument opImplConv() const", asFUNCTION(ConvertBorrowedArgument), asCALL_GENERIC);
+		if( r < 0 ) TEST_FAILED;
+		r = engine->RegisterGlobalFunction("bool consume(const BorrowedArgument &in)", asFUNCTION(ConsumeBorrowedArgument), asCALL_GENERIC);
+		if( r < 0 ) TEST_FAILED;
+		r = engine->RegisterGlobalFunction("int owners()", asFUNCTION(ReadConversionOwners), asCALL_GENERIC);
+		if( r < 0 ) TEST_FAILED;
+		liveConversionOwners = 0;
+		asIScriptModule *mod = engine->GetModule("borrowed", asGM_ALWAYS_CREATE);
+		mod->AddScriptSection("script",
+			"class Result { bool valid; Result(const BorrowedArgument &in value) { valid = consume(value); } } \n"
+			"Result makeResult() { return Result(ConversionOwner()); } \n");
+		r = mod->Build();
+		if( r < 0 ) TEST_FAILED;
+		r = ExecuteString(engine,
+			"assert(consume(ConversionOwner())); assert(owners() == 0); "
+			"assert(makeResult().valid); assert(owners() == 0);", mod);
+		if( r != asEXECUTION_FINISHED ) TEST_FAILED;
+		engine->ShutDownAndRelease();
+		if( liveConversionOwners != 0 ) TEST_FAILED;
+	}
 
 	// Test conversion double to uint where value is too big to hold in a 32bit int without changing sign
 	// Reported by Aaron Baker
